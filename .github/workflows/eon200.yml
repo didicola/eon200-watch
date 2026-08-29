@@ -1,0 +1,35 @@
+name: eon200-guardian
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+    - cron: "17 * * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Quick probe (all must be 200)
+        id: probe
+        continue-on-error: true
+        run: python3 scripts/probe-all.py
+      - name: Deep heal if anything broken
+        if: steps.probe.outcome == 'failure'
+        env:
+          CF_TOKEN: ${{ secrets.CF_TOKEN }}
+          CF_ACC: ${{ secrets.CF_ACC }}
+          TG_BOT: ${{ secrets.TG_BOT }}
+          TG_CHAT: ${{ secrets.TG_CHAT }}
+          EON_LANE: github-actions
+        run: python3 scripts/eon200-gh.py
+      - name: Ping Telegram all-200
+        if: steps.probe.outcome == 'success'
+        env:
+          TG_BOT: ${{ secrets.TG_BOT }}
+          TG_CHAT: ${{ secrets.TG_CHAT }}
+        run: |
+          curl -s -m 12 -X POST "https://api.telegram.org/bot${TG_BOT}/sendMessage" \
+            -d chat_id=${TG_CHAT} -d disable_web_page_preview=true \
+            -d "text=EON200 GH // all 200 (workers 73 + pages 8)"
