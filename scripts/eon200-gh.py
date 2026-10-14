@@ -367,7 +367,7 @@ def sweep(index_path, do_heal=True, quiet=False):
                 broken.append("w:" + n)
         for n in PAGES:
             if pstat[n] != "200":
-                if heal_page(n, index_path):
+                if index_path and heal_page(n, index_path):
                     healed.append("p:" + n)
                 else:
                     broken.append("p:" + n)
@@ -389,9 +389,9 @@ def main():
     a = ap.parse_args()
     if not os.path.exists(a.index):
         a.index = os.path.join(HOME, ".eon200", "eon200-index.html")
-        if not os.path.exists(a.index):
-            print("ERR: index not found:", a.index)
-            return 1
+    if not os.path.exists(a.index):
+        print("WARN: index not found (fresh runner) — healing without index update:", a.index)
+        a.index = None
     return sweep(a.index, do_heal=(a.heal or not a.sweep))
 
 
