@@ -14,6 +14,9 @@ jobs:
       - name: Quick probe (all must be 200)
         id: probe
         continue-on-error: true
+        env:
+          CF_TOKEN: ${{ secrets.CF_TOKEN }}
+          CF_ACC: ${{ secrets.CF_ACC }}
         run: python3 scripts/probe-all.py
       - name: Deep heal if anything broken
         if: steps.probe.outcome == 'failure'

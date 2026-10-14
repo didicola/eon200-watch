@@ -1,20 +1,38 @@
 #!/usr/bin/env python3
-"""Fast read-only status probe (no heal). Exit 0 if ALL 200."""
-import sys, urllib.request, urllib.parse
-GEN = ["api-anthropic","api-cloudflare","api-google","api-groq","api-huggingface","api-kimi","api-mistral","api-openai","api-openrouter","api-telegram-eon","api-togeth-ai","api-zai","deepseek","eon-ai-chat","eon-auto-deployer","eon-auto-learner","eon-cloud-backup-alpha","eon-cloud-backup-bravo","eon-cloud-backup-charlie","eon-config","eon-cron-trigger","eon-crypto-indicator","eon-data-fusion","eon-deep-ping","eon-deploy-prod","eon-edu-copilot","eon-exporter","eon-fleet-hub","eon-fleet-hub-v3","eon-fleet-syncer","eon-ghost-miner","eon-gitops","eon-glue","eon-heartbeat-farm","eon-inbox","eon-indexer","eon-job-runner","eon-lgpt","eon-metadata","eon-miner-1","eon-miner-10","eon-miner-11","eon-miner-12","eon-miner-13","eon-miner-2","eon-miner-3","eon-miner-4","eon-miner-5","eon-miner-6","eon-miner-7","eon-miner-8","eon-miner-9","eon-mirror","eon-monitor-hub","eon-page-blog","eon-page-portfolio","eon-prompt","eon-proxy-swarm","eon-rag-2","eon-readlogs","eon-scan-engine","eon-scraper-ai","eon-ssg-blog","eon-tools","eon-tools-v2","eon-tools-v3","eon-vision","home-cloud-relay","llm-probe","memory-cache","probe-fetch-test","eon-edge-orchestrator"]
-PAGES = ["eon-self","eon-crypto-blog","eon-public","eon-sovereign","eon-promo-agent","eon-tools-live","eon-sovereign-cloud","eon-earner"]
+"""Dynamic roster probe (no heal). Exit 0 if ALL current workers+pages answer 200.
+Roster = live CF API list, so retired workers can never haunt this probe again."""
+import sys, os, json, urllib.request, urllib.error
+from concurrent.futures import ThreadPoolExecutor
+
+CF_TOKEN = os.environ.get("CF_TOKEN", "")
+CF_ACC = os.environ.get("CF_ACC", "")
+PAGES = ["eon-self", "eon-crypto-blog", "eon-public", "eon-sovereign",
+         "eon-promo-agent", "eon-tools-live", "eon-sovereign-cloud", "eon-earner"]
+
+def api_names():
+    req = urllib.request.Request(
+        f"https://api.cloudflare.com/client/v4/accounts/{CF_ACC}/workers/scripts?per_page=100",
+        headers={"Authorization": f"Bearer {CF_TOKEN}"})
+    with urllib.request.urlopen(req, timeout=20) as r:
+        j = json.loads(r.read())
+    return [s["id"] for s in (j.get("result") or [])]
+
 def code(u):
     try:
-        r = urllib.request.urlopen(u, timeout=12)
-        return r.getcode()
+        return urllib.request.urlopen(u, timeout=12).getcode()
+    except urllib.error.HTTPError as e:
+        return e.code
     except Exception:
         return 0
-bad = []
-for w in GEN:
-    c = code(f"https://{w}.eon-sovereign.workers.dev/")
-    if c != 200: bad.append(f"{w}({c})")
-for p in PAGES:
-    c = code(f"https://{p}.pages.dev/")
-    if c != 200: bad.append(f"{p}({c})")
-print(f"probed {len(GEN)} workers + {len(PAGES)} pages; broken: {bad or 'NONE'}")
+
+if not (CF_TOKEN and CF_ACC):
+    print("missing CF_TOKEN/CF_ACC env"); sys.exit(2)
+
+names = api_names()
+targets = [(f"https://{w}.eon-sovereign.workers.dev/", f"w:{w}") for w in names] + \
+          [(f"https://{p}.pages.dev/", f"p:{p}") for p in PAGES]
+with ThreadPoolExecutor(max_workers=20) as ex:
+    codes = list(ex.map(lambda t: code(t[0]), targets))
+bad = [f"{tag}({c})" for (u, tag), c in zip(targets, codes) if c != 200]
+print(f"probed {len(names)} workers + {len(PAGES)} pages; broken: {bad or 'NONE'}")
 sys.exit(1 if bad else 0)
