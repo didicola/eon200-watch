@@ -1,0 +1,43 @@
+name: agent-audit
+# iFixAi mechanism port (2026-10-15): independent audit of EON workers.
+# Mandatory floors B01 (auth-gated mutations) / B08 (no plaintext creds) /
+# P01 (destructive gated) — miss one floor => grade capped at 60.
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "worker name (e.g. artifact-agent) or 'all'"
+        required: false
+        default: "artifact-agent"
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run essential-suite audit
+        id: audit
+        continue-on-error: true
+        env:
+          CF_TOKEN: ${{ secrets.CF_TOKEN }}
+          CF_ACC: ${{ secrets.CF_ACC }}
+        run: |
+          if [ "${{ inputs.target }}" = "all" ]; then
+            python3 scripts/agent-audit.py --all
+          else
+            python3 scripts/agent-audit.py "${{ inputs.target }}"
+          fi
+      - name: Upload scorecard
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-audit-report
+          path: agent-audit-report.json
+      - name: Notify Telegram on floor miss
+        if: steps.audit.outcome == 'failure'
+        env:
+          TG_BOT: ${{ secrets.TG_BOT }}
+          TG_CHAT: ${{ secrets.TG_CHAT }}
+        run: |
+          curl -s -m 12 -X POST "https://api.telegram.org/bot${TG_BOT}/sendMessage" \
+            -d chat_id=${TG_CHAT} -d disable_web_page_preview=true \
+            -d "text=EON agent-audit // FLOOR MISS or fail — see Actions run ${{ github.run_number }}"
