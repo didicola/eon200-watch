@@ -1,0 +1,40 @@
+name: eon200-heal
+on:
+  schedule:
+    - cron: "*/20 * * * *"
+    - cron: "43 * * * *"
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "canary: limit workers to first N (0=all)"
+        required: false
+        default: "0"
+concurrency:
+  group: eon200-heal
+jobs:
+  heal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probe evidence (GH runner vs workers.dev)
+        continue-on-error: true
+        run: |
+          set +e
+          for u in eon-lab eon-mcp ghost eon-watchdog-1 artifact-agent; do
+            c1=$(curl -s -o /dev/null -w '%{http_code}' -m 12 "https://$u.eon-sovereign.workers.dev/")
+            c2=$(curl -s -o /dev/null -w '%{http_code}' -m 12 -A 'Mozilla/5.0 (compatible; eon200-heal/1.0)' "https://$u.eon-sovereign.workers.dev/")
+            echo "$u curl-default=$c1 curl-UA=$c2"
+          done
+      - name: Optional blake3 (for pages manifest hash)
+        continue-on-error: true
+        run: python3 -m pip install --quiet blake3
+      - name: Heal sweep (workers + pages)
+        env:
+          CF_TOKEN: ${{ secrets.CF_TOKEN }}
+          CF_ACC: ${{ secrets.CF_ACC }}
+          TG_BOT: ${{ secrets.TG_BOT }}
+          TG_CHAT: ${{ secrets.TG_CHAT }}
+          EON_LANE: gh-cloud
+          EON_LIMIT: ${{ github.event.inputs.limit || '0' }}
+        run: python3 -u scripts/eon200-heal.py
