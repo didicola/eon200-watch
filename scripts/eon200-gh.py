@@ -331,7 +331,7 @@ def heal_page(name, index_path):
 
 
 def tg(text):
-    bot = os.environ.get("TG_BOT", "8814216816:AAHF2da0Ck0y8phnotragkk6Y0sjlCVFC5Q")
+    bot = os.environ.get("TG_BOT", "")
     chat = os.environ.get("TG_CHAT", "6663994526")
     try:
         st, _, raw, _ = None, None, None, None
